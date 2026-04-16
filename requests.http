@@ -1,0 +1,71 @@
+### Base URL — change to match your running instance
+@base = http://localhost:8000
+
+### After running "Create conversation", paste the returned id here
+@conv_id = replace-with-conversation-id
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 0. Liveness probe
+# ──────────────────────────────────────────────────────────────────────────────
+
+GET {{base}}/health
+
+
+###
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 1. Create a new conversation
+#    Copy the "id" from the response and set @conv_id above.
+# ──────────────────────────────────────────────────────────────────────────────
+
+POST {{base}}/conversations
+
+
+###
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 2. First turn — ask the agent to explore a table
+#    The agent will call get_schema automatically.
+# ──────────────────────────────────────────────────────────────────────────────
+
+POST {{base}}/conversations/{{conv_id}}/chat
+Content-Type: application/json
+
+{
+  "message": "I want help to explore table orders from schema sales"
+}
+
+
+###
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 3. Second turn — query using context from the previous turn
+#    The agent remembers the schema and builds the SQL query.
+#    If the query fails it will retry up to 3 times.
+# ──────────────────────────────────────────────────────────────────────────────
+
+POST {{base}}/conversations/{{conv_id}}/chat
+Content-Type: application/json
+
+{
+  "message": "Could you retrieve the last 5 results where user_id is 'user-test-h'?"
+}
+
+
+###
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 4. Get the full conversation history (human + assistant turns only)
+# ──────────────────────────────────────────────────────────────────────────────
+
+GET {{base}}/conversations/{{conv_id}}/history
+
+
+###
+
+# ──────────────────────────────────────────────────────────────────────────────
+# 5. Delete the conversation
+# ──────────────────────────────────────────────────────────────────────────────
+
+DELETE {{base}}/conversations/{{conv_id}}
