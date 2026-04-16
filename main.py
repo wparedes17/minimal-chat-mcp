@@ -1,8 +1,10 @@
+import json
 import os
 import uuid
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 
+import httpx
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Request
 from langchain_anthropic import ChatAnthropic
@@ -59,6 +61,34 @@ class HistoryResponse(BaseModel):
     messages: list[HistoryMessage]
 
 
+# ── Helpers ────────────────────────────────────────────────────────────────────
+
+def _parse_headers() -> dict[str, str]:
+    """
+    Read MCP_HEADERS from the environment.
+    Expected format: a JSON object, e.g.
+        MCP_HEADERS={"Authorization": "Bearer token", "X-Api-Key": "abc"}
+    Returns an empty dict when the variable is unset or empty.
+    """
+    raw = os.environ.get("MCP_HEADERS", "").strip()
+    if not raw:
+        return {}
+    try:
+        headers = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise RuntimeError(f"MCP_HEADERS is not valid JSON: {exc}") from exc
+    if not isinstance(headers, dict):
+        raise RuntimeError("MCP_HEADERS must be a JSON object, e.g. {\"Authorization\": \"Bearer …\"}")
+    return headers
+
+
+async def _check_health(health_url: str, headers: dict[str, str]) -> None:
+    """Hit the MCP server's health endpoint before the agent is built."""
+    async with httpx.AsyncClient() as client:
+        resp = await client.get(health_url, headers=headers, timeout=10)
+        resp.raise_for_status()
+
+
 # ── App lifespan: connect to MCP and build the agent once ──────────────────────
 
 @asynccontextmanager
@@ -67,10 +97,22 @@ async def lifespan(app: FastAPI):
     if not mcp_url:
         raise RuntimeError("MCP_SERVER_URL environment variable is required")
 
+    headers = _parse_headers()
+
+    # Optional: verify the MCP server is reachable before building the agent
+    health_url = os.environ.get("MCP_HEALTH_URL", "").strip()
+    if health_url:
+        try:
+            await _check_health(health_url, headers)
+        except Exception as exc:
+            raise RuntimeError(f"MCP health check failed ({health_url}): {exc}") from exc
+
     mcp_config = {
         "my-mcp": {
             "url": mcp_url,
             "transport": os.environ.get("MCP_TRANSPORT", "streamable_http"),
+            # headers are forwarded with every tool call to the MCP server
+            **({"headers": headers} if headers else {}),
         }
     }
 
