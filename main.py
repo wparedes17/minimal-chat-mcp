@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 import httpx
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Request
-from langchain_anthropic import ChatAnthropic
+from langchain_openai import AzureChatOpenAI
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langchain_mcp_adapters.client import MultiServerMCPClient
 from langgraph.checkpoint.memory import MemorySaver
@@ -119,8 +119,11 @@ async def lifespan(app: FastAPI):
     async with MultiServerMCPClient(mcp_config) as mcp_client:
         tools = await mcp_client.get_tools()
 
-        llm = ChatAnthropic(
-            model=os.environ.get("ANTHROPIC_MODEL", "claude-sonnet-4-6"),
+        llm = AzureChatOpenAI(
+            azure_endpoint=os.environ["AZURE_OPENAI_ENDPOINT"],
+            azure_deployment=os.environ["AZURE_OPENAI_DEPLOYMENT"],
+            api_version=os.environ.get("AZURE_OPENAI_API_VERSION", "2024-12-01-preview"),
+            api_key=os.environ["AZURE_OPENAI_API_KEY"],
             temperature=0,
         )
 
